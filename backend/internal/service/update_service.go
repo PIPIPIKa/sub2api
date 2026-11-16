@@ -30,7 +30,7 @@ var (
 const (
 	updateCacheKey = "update_check_cache"
 	updateCacheTTL = 1200 // 20 minutes
-	githubRepo     = "Wei-Shaw/sub2api"
+	githubRepo     = "PIPIPIKa/sub2api"
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -363,7 +363,7 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 // fetchRollbackCandidates fetches recent releases and keeps the newest
 // maxRollbackVersions entries strictly older than the current version.
 func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubRelease, error) {
-	releases, err := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
+	releases, err := s.githubClient.FetchRecentReleases(ctx, resolveUpdateGitHubRepo(), rollbackFetchPageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 }
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
-	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
+	release, err := s.githubClient.FetchLatestRelease(ctx, resolveUpdateGitHubRepo())
 	if err != nil {
 		return nil, err
 	}
@@ -637,10 +637,17 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	_ = s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 }
 
-// compareVersions compares two semantic versions
+func resolveUpdateGitHubRepo() string {
+	if repo := strings.TrimSpace(os.Getenv("SUB2API_UPDATE_REPO")); repo != "" {
+		return repo
+	}
+	return githubRepo
+}
+
+// compareVersions compares two semantic versions, supporting fork patch suffixes (-p1, -p2).
 func compareVersions(current, latest string) int {
-	currentParts := parseVersion(current)
-	latestParts := parseVersion(latest)
+	currentParts, currentPatch := parseVersionWithPatch(current)
+	latestParts, latestPatch := parseVersionWithPatch(latest)
 
 	for i := 0; i < 3; i++ {
 		if currentParts[i] < latestParts[i] {
@@ -650,13 +657,31 @@ func compareVersions(current, latest string) int {
 			return 1
 		}
 	}
+	if currentPatch < latestPatch {
+		return -1
+	}
+	if currentPatch > latestPatch {
+		return 1
+	}
 	return 0
 }
 
 func parseVersion(v string) [3]int {
-	v = strings.TrimPrefix(v, "v")
+	parts, _ := parseVersionWithPatch(v)
+	return parts
+}
+
+func parseVersionWithPatch(v string) ([3]int, int) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	patchRev := 0
 	if idx := strings.IndexByte(v, '-'); idx != -1 {
+		suffix := strings.ToLower(strings.TrimSpace(v[idx+1:]))
 		v = v[:idx]
+		if strings.HasPrefix(suffix, "p") {
+			if n, err := strconv.Atoi(strings.TrimPrefix(suffix, "p")); err == nil && n > 0 {
+				patchRev = n
+			}
+		}
 	}
 	parts := strings.Split(v, ".")
 	result := [3]int{0, 0, 0}
@@ -665,5 +690,5 @@ func parseVersion(v string) [3]int {
 			result[i] = parsed
 		}
 	}
-	return result
+	return result, patchRev
 }

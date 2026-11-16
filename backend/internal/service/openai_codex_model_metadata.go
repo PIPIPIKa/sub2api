@@ -99,14 +99,18 @@ func accountCodexToolCapabilities(account *Account, modelID string) map[string]j
 	}
 	// API Astra publicly supports Ultrafast. OAuth must advertise it in its
 	// account manifest; a subscription label alone does not grant the capability.
-	if account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(baseURL) && isOpenAIGPT6AstraModel(modelID) {
+	if account.IsOpenAI() && official {
 		tiers := configuredCodexServiceTiersForModel(modelID)
-		tiers = append(tiers, configuredCodexServiceTier{ID: OpenAIFastTierUltrafast, Name: "Ultrafast", Description: "Lowest latency; 6x Standard token pricing."})
-		encoded, err := json.Marshal(tiers)
-		if err != nil {
-			panic(err)
+		if account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(baseURL) && isOpenAIGPT6AstraModel(modelID) {
+			tiers = append(tiers, configuredCodexServiceTier{ID: OpenAIFastTierUltrafast, Name: "Ultrafast", Description: "Lowest latency; 6x Standard token pricing."})
 		}
-		applyCodexToolCapabilities(capabilities, map[string]json.RawMessage{"service_tiers": encoded}, false)
+		if len(tiers) > 0 {
+			encoded, err := json.Marshal(tiers)
+			if err != nil {
+				panic(err)
+			}
+			applyCodexToolCapabilities(capabilities, map[string]json.RawMessage{"service_tiers": encoded}, false)
+		}
 	}
 	return capabilities
 }
@@ -291,7 +295,7 @@ func intersectUpstreamModelMetadata(modelID string, candidates []UpstreamModelMe
 			case "supports_search_tool", "use_responses_lite":
 				fallback = json.RawMessage("false")
 			case "service_tiers":
-				fallback = json.RawMessage("[]")
+				fallback = intersectCodexServiceTiers(candidates)
 			}
 			result.CodexToolCapabilities[field] = fallback
 		}
@@ -503,4 +507,46 @@ func stringSliceContains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func intersectCodexServiceTiers(candidates []UpstreamModelMetadata) json.RawMessage {
+	if len(candidates) == 0 {
+		return json.RawMessage("[]")
+	}
+	var shared []configuredCodexServiceTier
+	for i, candidate := range candidates {
+		raw := bytes.TrimSpace(candidate.CodexToolCapabilities["service_tiers"])
+		if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+			return json.RawMessage("[]")
+		}
+		var tiers []configuredCodexServiceTier
+		if err := json.Unmarshal(raw, &tiers); err != nil || len(tiers) == 0 {
+			return json.RawMessage("[]")
+		}
+		if i == 0 {
+			shared = append(shared, tiers...)
+			continue
+		}
+		allowed := make(map[string]struct{}, len(tiers))
+		for _, tier := range tiers {
+			if id := strings.TrimSpace(tier.ID); id != "" {
+				allowed[id] = struct{}{}
+			}
+		}
+		next := shared[:0]
+		for _, tier := range shared {
+			if _, ok := allowed[strings.TrimSpace(tier.ID)]; ok {
+				next = append(next, tier)
+			}
+		}
+		shared = next
+		if len(shared) == 0 {
+			return json.RawMessage("[]")
+		}
+	}
+	encoded, err := json.Marshal(shared)
+	if err != nil {
+		return json.RawMessage("[]")
+	}
+	return encoded
 }

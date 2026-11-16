@@ -57,11 +57,15 @@ const (
 // expand against the catalog).
 func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 	explicitlyEnabled := make(map[string]struct{})
+	explicitBareAliases := make(map[string]struct{})
 	if group != nil && group.ModelAllowlistEnabled() {
 		for _, modelID := range group.ModelAllowlist.Models {
 			modelID = strings.TrimSpace(modelID)
 			if strings.HasPrefix(modelID, codexAutoModelPrefix) {
 				explicitlyEnabled[modelID] = struct{}{}
+			}
+			if codexDuplicateBareAliasTarget(modelID) != "" {
+				explicitBareAliases[modelID] = struct{}{}
 			}
 		}
 	}
@@ -88,7 +92,7 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 	if group != nil && group.ModelAllowlistEnabled() {
 		filtered = group.ModelAllowlist.FilterForListing(filtered)
 	}
-	return filtered
+	return omitDuplicateCodexBareAliases(filtered, explicitBareAliases)
 }
 
 func isCodexDedicatedMediaModel(modelID string) bool {
@@ -1437,6 +1441,16 @@ func mergeConfiguredCodexModelsManifest(
 		merged = append(merged, rawModel)
 	}
 
+	configuredSet := make(map[string]struct{}, len(configuredModels))
+	for _, modelID := range configuredModels {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" || isCodexDedicatedMediaModel(modelID) {
+			continue
+		}
+		if !filterBySelection || allowlist.Allows(modelID) {
+			configuredSet[modelID] = struct{}{}
+		}
+	}
 	for _, modelID := range configuredModels {
 		if isCodexDedicatedMediaModel(modelID) {
 			continue
@@ -1446,6 +1460,14 @@ func mergeConfiguredCodexModelsManifest(
 		}
 		if strings.HasPrefix(modelID, codexAutoModelPrefix) {
 			if _, explicitlyEnabled := selected[modelID]; !filterBySelection || !explicitlyEnabled {
+				continue
+			}
+		}
+		if canonical := codexDuplicateBareAliasTarget(modelID); canonical != "" {
+			_, explicitlySelected := selected[modelID]
+			_, canonicalUpstream := seen[canonical]
+			_, canonicalConfigured := configuredSet[canonical]
+			if (!filterBySelection || !explicitlySelected) && (canonicalUpstream || canonicalConfigured) {
 				continue
 			}
 		}
@@ -2703,4 +2725,35 @@ func (d configuredCodexModelDescriptor) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(fields)
+}
+
+func codexDuplicateBareAliasTarget(modelID string) string {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "gpt-6":
+		return "gpt-6-astra"
+	case "gpt-5.6":
+		return "gpt-5.6-sol"
+	default:
+		return ""
+	}
+}
+
+func omitDuplicateCodexBareAliases(modelIDs []string, explicitlySelected map[string]struct{}) []string {
+	present := make(map[string]struct{}, len(modelIDs))
+	for _, id := range modelIDs {
+		present[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
+	}
+	out := make([]string, 0, len(modelIDs))
+	for _, id := range modelIDs {
+		trimmed := strings.TrimSpace(id)
+		if canonical := codexDuplicateBareAliasTarget(trimmed); canonical != "" {
+			_, explicit := explicitlySelected[trimmed]
+			_, hasCanonical := present[canonical]
+			if !explicit && hasCanonical {
+				continue
+			}
+		}
+		out = append(out, id)
+	}
+	return out
 }

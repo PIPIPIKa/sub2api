@@ -687,6 +687,13 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 	return c.fetchAvailableModels(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
 }
 
+func (c *Client) FetchAvailableModelsWithURLs(ctx context.Context, availableURLs []string, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	if len(availableURLs) == 0 {
+		availableURLs = BaseURLs
+	}
+	return c.fetchAvailableModels(ctx, availableURLs, accessToken, projectID, bodyLimit, false)
+}
+
 // FetchAvailableModelsFromURL 获取指定端点的模型目录，不回退到其他端点。
 // 模型发现应使用与生成请求相同的端点，避免返回该端点无法访问的模型。
 func (c *Client) FetchAvailableModelsFromURL(ctx context.Context, baseURL, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
