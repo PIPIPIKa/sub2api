@@ -1254,14 +1254,6 @@ func normalizeOpenAIModelForUpstream(account *Account, model string) string {
 		// 出站前剥离泄漏的客户端上下文后缀，转发规范名给上游。
 		return normalizeClaudeCodeLongContextModel(model)
 	}
-	if account.IsOpenAIApiKey() && isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL()) {
-		switch canonicalizeOpenAIModelAliasSpelling(model) {
-		case "gpt-6":
-			return "gpt-6-astra"
-		case "gpt-5.6":
-			return "gpt-5.6-sol"
-		}
-	}
 	return model
 }
 

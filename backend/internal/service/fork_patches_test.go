@@ -12,13 +12,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
-func TestForkPatch_CodexDuplicateBareAliasesAndOfficialAPIKeyNormalize(t *testing.T) {
+func TestForkPatch_CodexDuplicateBareAliases(t *testing.T) {
 	got := FilterCodexModelIDsForGroup([]string{"gpt-6", "gpt-6-astra", "gpt-5.6", "gpt-5.6-sol"}, nil)
 	require.Equal(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, got)
 
-	// Keep bare alias when canonical model is absent or explicitly selected.
 	require.Equal(t, []string{"gpt-6"}, FilterCodexModelIDsForGroup([]string{"gpt-6"}, nil))
 	explicitGroup := &Group{ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"gpt-6", "gpt-6-astra"}}}
 	require.Equal(t, []string{"gpt-6", "gpt-6-astra"}, FilterCodexModelIDsForGroup([]string{"gpt-6", "gpt-6-astra"}, explicitGroup))
@@ -32,17 +32,9 @@ func TestForkPatch_CodexDuplicateBareAliasesAndOfficialAPIKeyNormalize(t *testin
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, codexManifestModelSlugs(t, merged))
-
-	officialKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://api.openai.com/v1"}}
-	require.Equal(t, "gpt-6-astra", normalizeOpenAIModelForUpstream(officialKey, "gpt-6"))
-	require.Equal(t, "gpt-5.6-sol", normalizeOpenAIModelForUpstream(officialKey, "gpt-5.6"))
-
-	customRelay := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://relay.example.com/v1"}}
-	require.Equal(t, "gpt-6", normalizeOpenAIModelForUpstream(customRelay, "gpt-6"))
 }
 
 func TestForkPatch_ServiceTiersIntersectAndOfficialOAuthDefault(t *testing.T) {
-	// Official OAuth without synced snapshot + official API key with ultrafast -> keeps shared Fast ("priority").
 	oauthUnsynced := Account{
 		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Credentials: map[string]any{"base_url": "https://chatgpt.com"},
@@ -59,6 +51,45 @@ func TestForkPatch_ServiceTiersIntersectAndOfficialOAuthDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(rawTiers), `"id":"priority"`)
 	require.NotContains(t, string(rawTiers), `"id":"ultrafast"`)
+}
+
+func TestForkPatch_AntigravityResponsesMaxOutputTokensDefault64000(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want int64
+	}{
+		{
+			name: "omitted defaults to 64000 instead of 8192",
+			body: `{"model":"gemini-4-carbon-high","input":"hello","stream":true}`,
+			want: 64000,
+		},
+		{
+			name: "explicit max_output_tokens preserved",
+			body: `{"model":"gemini-4-carbon-high","input":"hello","stream":true,"max_output_tokens":16384}`,
+			want: 16384,
+		},
+		{
+			name: "above 64000 clamped to 64000",
+			body: `{"model":"gemini-4-carbon-high","input":"hello","stream":true,"max_output_tokens":99999}`,
+			want: 64000,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			raw := []byte(tc.body)
+			c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", raw)
+			account := newAntigravityCompatAccount(AccountTypeOAuth)
+			account.Credentials["model_mapping"] = map[string]any{"gemini-4-carbon-high": "gemini-4-carbon-high"}
+
+			result, err := svc.ForwardAsResponses(context.Background(), c, account, raw, nil)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requestBodies, 1)
+			require.Equal(t, tc.want, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.maxOutputTokens").Int())
+		})
+	}
 }
 
 func TestForkPatch_AntigravityQuotaPrefersDailyForPaidAccount(t *testing.T) {
@@ -95,6 +126,7 @@ func TestForkPatch_AntigravityQuotaPrefersDailyForPaidAccount(t *testing.T) {
 		antigravity.BaseURLs = origURLs
 		antigravity.BaseURL = origBase
 	})
+
 	fetcher := NewAntigravityQuotaFetcher(nil, &config.Config{})
 	account := &Account{
 		ID: 39, Platform: PlatformAntigravity, Type: AccountTypeOAuth,
