@@ -254,19 +254,26 @@ func groupCodexModelMetadata(
 			}
 			lookupModel = account.GetMappedModel(modelID)
 		} else {
-			if !account.IsModelSupported(upstreamModel) &&
-				!(account.Platform == PlatformAntigravity && len(geminiCodexVariantReasoningLevels(account, upstreamModel)) > 0) {
+			supportedByVariant := account.Platform == PlatformAntigravity && len(geminiCodexVariantReasoningLevels(account, upstreamModel)) > 0
+			if !account.IsModelSupported(upstreamModel) && !supportedByVariant {
 				continue
 			}
 			lookupModel = account.GetMappedModel(upstreamModel)
 		}
-		if strings.TrimSpace(lookupModel) != modelID {
+		selfGeminiTier := isSelfGeminiThinkingTierTarget(strings.TrimPrefix(strings.TrimSpace(upstreamModel), "models/"), strings.TrimPrefix(strings.TrimSpace(lookupModel), "models/"))
+		if strings.TrimSpace(lookupModel) != modelID && !selfGeminiTier {
 			publicAlias = true
 		}
-		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		metadata, ok := lookupCodexUpstreamModelMetadata(account, lookupModel)
 		reasoningModel := lookupModel
-		if isSelfGeminiThinkingTierTarget(strings.TrimPrefix(strings.TrimSpace(upstreamModel), "models/"), strings.TrimPrefix(strings.TrimSpace(lookupModel), "models/")) {
+		if selfGeminiTier {
 			reasoningModel = upstreamModel
+			// Self-tier default mapping (e.g. gemini-4-argon -> gemini-4-argon-high)
+			// must not lock the slider to the single default tier's snapshot.
+			metadata.DisplayName = ""
+			metadata.Reasoning = nil
+			metadata.SupportedReasoningLevels = nil
+			metadata.DefaultReasoningLevel = ""
 		}
 		applyGeminiCodexReasoningMetadata(&metadata, account, reasoningModel)
 		if !ok {
@@ -301,6 +308,32 @@ func groupCodexModelMetadata(
 		metadata.Description = configuredCodexCustomDescription
 	}
 	return metadata, true
+}
+
+func lookupCodexUpstreamModelMetadata(account *Account, modelID string) (UpstreamModelMetadata, bool) {
+	if account == nil {
+		return UpstreamModelMetadata{}, false
+	}
+	if metadata, ok := account.GetUpstreamModelMetadata(modelID); ok {
+		return metadata, true
+	}
+	base := strings.TrimPrefix(strings.TrimSpace(modelID), "models/")
+	if !strings.HasPrefix(strings.ToLower(base), "gemini-") || hasGeminiThinkingVariantSuffix(base) {
+		return UpstreamModelMetadata{}, false
+	}
+	for _, level := range []string{"high", "xhigh", "medium", "low", "tiered"} {
+		if variant, ok := account.GetUpstreamModelMetadata(base + "-" + level); ok {
+			// Inherit non-tier capabilities (modalities, context window, output limit)
+			// while letting applyGeminiCodexReasoningMetadata advertise all available tiers.
+			variant.ID = base
+			variant.DisplayName = ""
+			variant.Reasoning = nil
+			variant.SupportedReasoningLevels = nil
+			variant.DefaultReasoningLevel = ""
+			return variant, true
+		}
+	}
+	return UpstreamModelMetadata{}, false
 }
 
 func applyGeminiCodexReasoningMetadata(metadata *UpstreamModelMetadata, account *Account, modelID string) {

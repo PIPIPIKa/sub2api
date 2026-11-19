@@ -212,7 +212,7 @@ func TestGatewayCodexModels_NonOpenAIGroupsUseMappedModels(t *testing.T) {
 			platform:   service.PlatformAnthropic,
 			model:      "anthropic/claude-sonnet-4-6",
 			efforts:    []string{"low", "medium", "high", "max"},
-			modalities: []string{"text"},
+			modalities: []string{"text", "image"},
 		},
 	}
 

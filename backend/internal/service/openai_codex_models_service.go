@@ -533,6 +533,14 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		}
 	}
 
+	if isGeminiCodexModel(modelID) {
+		descriptor.DisplayName = geminiCodexDisplayName(modelID)
+		descriptor.Description = "Gemini coding and reasoning model routed through Sub2API."
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = 1_048_576
+		descriptor.MaxContextWindow = 1_048_576
+	}
+
 	if isClaudeCodexModel(modelID) {
 		if claude.IsOpus55(modelID) || claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID) || claude.IsFable52(modelID) || claude.IsMythos52(modelID) {
 			descriptor.ContextWindow = 1_000_000
@@ -841,6 +849,44 @@ func deepSeekCodexDisplayName(modelID string) string {
 	}
 }
 
+func isGeminiCodexModel(modelID string) bool {
+	canonical := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	return strings.HasPrefix(canonical, "gemini-") && !isCodexDedicatedMediaModel(canonical)
+}
+
+func geminiCodexDisplayName(modelID string) string {
+	canonical := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	if canonical == "" {
+		return modelID
+	}
+	parts := strings.Split(canonical, "-")
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
+}
+
+func isGeminiCodexImageInputModel(modelID string) bool {
+	canonical := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	if !strings.HasPrefix(canonical, "gemini-") {
+		return false
+	}
+	for _, nonVision := range []string{"embedding", "tts", "audio"} {
+		if strings.Contains(canonical, nonVision) {
+			return false
+		}
+	}
+	return true
+}
+
+func isClaudeCodexImageInputModel(modelID string) bool {
+	canonical := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	return strings.HasPrefix(canonical, "claude-")
+}
+
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
 }
@@ -1062,7 +1108,12 @@ func buildCodexModelsManifest(
 			continue
 		}
 		seen[modelID] = struct{}{}
-		descriptor := newConfiguredCodexModelDescriptor(metadataModelID)
+		selfGeminiTier := isSelfGeminiThinkingTierTarget(strings.TrimPrefix(modelID, "models/"), strings.TrimPrefix(metadataModelID, "models/"))
+		descriptorModelID := metadataModelID
+		if selfGeminiTier {
+			descriptorModelID = modelID
+		}
+		descriptor := newConfiguredCodexModelDescriptor(descriptorModelID)
 		descriptor.Slug = modelID
 		descriptor.SupportsSearchTool = searchToolModels[modelID]
 		if metadata, ok := modelMetadata[modelID]; ok {
@@ -1073,7 +1124,7 @@ func buildCodexModelsManifest(
 			// a stale official Astra snapshot cannot downgrade the catalog.
 			descriptor.InputModalities = []string{"text", "image"}
 		}
-		if metadataModelID != modelID {
+		if metadataModelID != modelID && !selfGeminiTier {
 			descriptor.DisplayName = modelID
 			descriptor.Description = configuredCodexCustomDescription
 		}
@@ -1222,14 +1273,24 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo {
+	if platform != PlatformOpenAI &&
+		platform != PlatformGrok &&
+		platform != PlatformDeepseek &&
+		platform != PlatformOpenCodeGo &&
+		platform != PlatformGemini &&
+		platform != PlatformAntigravity &&
+		platform != PlatformAnthropic {
 		return false
 	}
 
 	candidates := 0
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != platform || !account.IsModelSupported(upstreamModel) {
+		if !codexAccountServesPlatformModel(account, platform, upstreamModel) {
+			continue
+		}
+		supportedByVariant := account.Platform == PlatformAntigravity && len(geminiCodexVariantReasoningLevels(account, upstreamModel)) > 0
+		if !account.IsModelSupported(upstreamModel) && !supportedByVariant {
 			continue
 		}
 		candidates++
@@ -1395,6 +1456,13 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		}
 		canonical := xai.ResolveGrokTextResponsesModelID(upstreamModel)
 		return isGrokCodexImageInputModel(canonical)
+	case PlatformGemini, PlatformAntigravity, PlatformAnthropic:
+		if metadata, ok := lookupCodexUpstreamModelMetadata(account, upstreamModel); ok {
+			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
+				return stringSliceContains(modalities, "image")
+			}
+		}
+		return isGeminiCodexImageInputModel(upstreamModel) || isClaudeCodexImageInputModel(upstreamModel)
 	default:
 		return false
 	}

@@ -293,3 +293,184 @@ func TestForkPatch_UpdateRepoAndPatchVersionComparison(t *testing.T) {
 	require.Equal(t, 1, compareVersions("0.2.21-p2", "0.2.21-p1"))
 	require.Equal(t, -1, compareVersions("0.2.21-p2", "0.2.22"))
 }
+
+func TestForkPatch_GeminiAndClaudeCodexCapabilities(t *testing.T) {
+	reasoning := true
+	argonSnapshot := UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{
+			"gemini-4-argon-high": {
+				ID:                       "gemini-4-argon-high",
+				DisplayName:              "Gemini 4 Argon High",
+				InputModalities:          []string{"text", "image"},
+				ContextWindow:            1_048_576,
+				MaxContextWindow:         1_048_576,
+				Reasoning:                &reasoning,
+				SupportedReasoningLevels: []string{"high"},
+				DefaultReasoningLevel:    "high",
+			},
+		},
+	}
+	textOnlySnapshot := UpstreamModelMetadataSnapshot{
+		Models: map[string]UpstreamModelMetadata{
+			"gemini-4-neon-high": {
+				ID:              "gemini-4-neon-high",
+				InputModalities: []string{"text"},
+			},
+			"claude-sonnet-4-6": {
+				ID:              "claude-sonnet-4-6",
+				InputModalities: []string{"text"},
+			},
+		},
+	}
+
+	antigravityAcc := Account{
+		ID:       41,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-4-neon-low":      "gemini-4-neon-low",
+			"gemini-4-neon-medium":   "gemini-4-neon-medium",
+			"gemini-4-neon-high":     "gemini-4-neon-high",
+			"gemini-4-neon-xhigh":    "gemini-4-neon-xhigh",
+			"gemini-4-carbon-low":    "gemini-4-carbon-low",
+			"gemini-4-carbon-medium": "gemini-4-carbon-medium",
+			"gemini-4-carbon-high":   "gemini-4-carbon-high",
+			"gemini-4-argon":         "gemini-4-argon-high",
+			"gemini-4-argon-low":     "gemini-4-argon-low",
+			"gemini-4-argon-medium":  "gemini-4-argon-medium",
+			"gemini-4-argon-high":    "gemini-4-argon-high",
+		}},
+	}
+	antigravityAcc.SetUpstreamModelMetadataSnapshot(argonSnapshot)
+
+	body, err := buildCodexModelsManifestForAccounts(
+		PlatformAntigravity,
+		[]string{"gemini-4-neon", "gemini-4-carbon", "gemini-4-argon"},
+		[]Account{antigravityAcc},
+		nil,
+		nil,
+		true,
+	)
+	require.NoError(t, err)
+
+	var manifest struct {
+		Models []struct {
+			Slug                     string   `json:"slug"`
+			DisplayName              string   `json:"display_name"`
+			ContextWindow            int      `json:"context_window"`
+			SupportsParallelToolCall bool     `json:"supports_parallel_tool_calls"`
+			InputModalities          []string `json:"input_modalities"`
+			SupportedReasoningLevels []struct {
+				Effort string `json:"effort"`
+			} `json:"supported_reasoning_levels"`
+		} `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(body, &manifest))
+	require.Len(t, manifest.Models, 3)
+
+	bySlug := make(map[string]int, len(manifest.Models))
+	for i, m := range manifest.Models {
+		bySlug[m.Slug] = i
+	}
+
+	neon := manifest.Models[bySlug["gemini-4-neon"]]
+	require.Equal(t, "Gemini 4 Neon", neon.DisplayName)
+	require.Equal(t, 1_048_576, neon.ContextWindow)
+	require.True(t, neon.SupportsParallelToolCall)
+	require.Equal(t, []string{"text", "image"}, neon.InputModalities)
+	require.Len(t, neon.SupportedReasoningLevels, 4)
+
+	carbon := manifest.Models[bySlug["gemini-4-carbon"]]
+	require.Equal(t, "Gemini 4 Carbon", carbon.DisplayName)
+	require.Equal(t, 1_048_576, carbon.ContextWindow)
+	require.Equal(t, []string{"text", "image"}, carbon.InputModalities)
+	require.Len(t, carbon.SupportedReasoningLevels, 3)
+
+	argon := manifest.Models[bySlug["gemini-4-argon"]]
+	require.Equal(t, "Gemini 4 Argon", argon.DisplayName)
+	require.Equal(t, 1_048_576, argon.ContextWindow)
+	require.Equal(t, []string{"text", "image"}, argon.InputModalities)
+	require.Len(t, argon.SupportedReasoningLevels, 3)
+
+	// Explicit text-only upstream snapshot must override the multimodal fallback.
+	antigravityTextOnly := antigravityAcc
+	antigravityTextOnly.Extra = nil
+	antigravityTextOnly.SetUpstreamModelMetadataSnapshot(textOnlySnapshot)
+	bodyTextOnly, err := buildCodexModelsManifestForAccounts(
+		PlatformAntigravity,
+		[]string{"gemini-4-neon"},
+		[]Account{antigravityTextOnly},
+		nil,
+		nil,
+		true,
+	)
+	require.NoError(t, err)
+	require.Equal(t, `["text"]`, gjson.GetBytes(bodyTextOnly, "models.0.input_modalities").Raw)
+
+	// Anthropic Claude defaults to multimodal unless snapshot restricts it to text.
+	claudeAcc := Account{
+		ID:          42,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"claude-sonnet-4-6": "claude-sonnet-4-6"}},
+	}
+	claudeBody, err := buildCodexModelsManifestForAccounts(
+		PlatformAnthropic,
+		[]string{"claude-sonnet-4-6"},
+		[]Account{claudeAcc},
+		nil,
+		nil,
+		true,
+	)
+	require.NoError(t, err)
+	require.Equal(t, `["text","image"]`, gjson.GetBytes(claudeBody, "models.0.input_modalities").Raw)
+
+	claudeTextOnly := claudeAcc
+	claudeTextOnly.SetUpstreamModelMetadataSnapshot(textOnlySnapshot)
+	claudeTextOnlyBody, err := buildCodexModelsManifestForAccounts(
+		PlatformAnthropic,
+		[]string{"claude-sonnet-4-6"},
+		[]Account{claudeTextOnly},
+		nil,
+		nil,
+		true,
+	)
+	require.NoError(t, err)
+	require.Equal(t, `["text"]`, gjson.GetBytes(claudeTextOnlyBody, "models.0.input_modalities").Raw)
+}
+
+func TestForkPatch_AntigravityInjectedAliasesExcludedFromListings(t *testing.T) {
+	acc := &Account{
+		ID:       43,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-pro-agent": "gemini-pro-agent",
+			"gemini-4-neon":    "gemini-4-neon",
+		}},
+	}
+	mapping := acc.GetModelMapping()
+	require.Equal(t, "gemini-pro-agent", mapping["gemini-3.1-pro"])
+	require.Equal(t, "gemini-pro-agent", mapping["gemini-3.1-pro-high"])
+	require.Equal(t, "gemini-pro-agent", mapping["gemini-3.1-pro-preview"])
+	require.Equal(t, "gemini-3-flash", mapping["gemini-3-flash"])
+
+	require.True(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-3.1-pro", mapping["gemini-3.1-pro"]))
+	require.True(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-3.1-pro-high", mapping["gemini-3.1-pro-high"]))
+	require.True(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-3.1-pro-preview", mapping["gemini-3.1-pro-preview"]))
+	require.True(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-3-flash", mapping["gemini-3-flash"]))
+	require.False(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-pro-agent", mapping["gemini-pro-agent"]))
+	require.False(t, acc.isAntigravityInjectedDefaultPassthrough("gemini-4-neon", mapping["gemini-4-neon"]))
+
+	// Explicitly configured gemini-3.1-pro must remain visible.
+	accExplicit := &Account{
+		ID:       44,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-pro-agent": "gemini-pro-agent",
+			"gemini-3.1-pro":   "gemini-pro-agent",
+		}},
+	}
+	require.False(t, accExplicit.isAntigravityInjectedDefaultPassthrough("gemini-3.1-pro", "gemini-pro-agent"))
+}

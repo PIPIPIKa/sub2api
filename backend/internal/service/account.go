@@ -822,10 +822,21 @@ var antigravityDefaultPassthroughModels = []string{
 	"gemini-4-neon-xhigh",
 }
 
+var antigravityInjectedGemini31ProAliases = []string{
+	"gemini-3.1-pro",
+	"gemini-3.1-pro-high",
+	"gemini-3.1-pro-preview",
+}
+
 // isAntigravityInjectedDefaultPassthrough 判断 GetModelMapping 中的 key→target 是否仅由
 // resolveModelMapping 运行时补齐（管理员未写入 credentials.model_mapping）。
 func (a *Account) isAntigravityInjectedDefaultPassthrough(key, target string) bool {
-	if a == nil || a.Platform != domain.PlatformAntigravity || key != target || !slices.Contains(antigravityDefaultPassthroughModels, key) {
+	if a == nil || a.Platform != domain.PlatformAntigravity {
+		return false
+	}
+	isDefaultPassthrough := key == target && slices.Contains(antigravityDefaultPassthroughModels, key)
+	isGemini31Alias := slices.Contains(antigravityInjectedGemini31ProAliases, key)
+	if !isDefaultPassthrough && !isGemini31Alias {
 		return false
 	}
 	rawMapping, _ := a.Credentials["model_mapping"].(map[string]any)
@@ -840,8 +851,14 @@ func (a *Account) isAntigravityInjectedDefaultPassthrough(key, target string) bo
 		// 空映射走默认目录，不做运行时补齐。
 		return false
 	}
-	_, configured := rawMapping[key].(string)
-	return !configured
+	if _, configured := rawMapping[key].(string); configured {
+		return false
+	}
+	if isDefaultPassthrough {
+		return true
+	}
+	agentTarget, _ := rawMapping[domain.AntigravityGemini31ProAgentModel].(string)
+	return strings.TrimSpace(agentTarget) != "" && strings.TrimSpace(target) == strings.TrimSpace(agentTarget)
 }
 
 func ensureAntigravityDefaultPassthrough(mapping map[string]string, model string) {
