@@ -11,3 +11,11 @@
 - CI 验证：Release 前端构建、5 个平台二进制构建、镜像发布、GitHub Release 和 Security Scan 均成功。
 - 发布地址：<https://github.com/PIPIPIKa/sub2api/releases/tag/v0.2.22-p5>
 - 环境限制：Windows 本地 release matrix 辅助测试受 Python 3.9、Git Bash 路径和权限限制，GitHub Actions Linux 环境已完成对应发布验证。
+
+## 2026-11-19 Production model mapping cleanup
+
+- Target：BWH production Sub2API accounts 39 `KONG-GOOGLE` and 40 `GAO-GOOGLE`.
+- Backup：`/root/sub2api-backups/accounts-model-mapping-20261119T085116Z.sql`。
+- Changed: removed `gemini-4-hydrogen-high/low/medium/xhigh` and consolidated Carbon tier keys into `gemini-4-carbon`.
+- Preserved: all Argon mappings.
+- Verification: both accounts have Carbon base, no Carbon tier keys, and no Hydrogen tier keys. Application container is `running healthy`, `/health` returned `{"status":"ok"}`。
