@@ -666,11 +666,6 @@ func compareVersions(current, latest string) int {
 	return 0
 }
 
-func parseVersion(v string) [3]int {
-	parts, _ := parseVersionWithPatch(v)
-	return parts
-}
-
 func parseVersionWithPatch(v string) ([3]int, int) {
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
 	patchRev := 0
