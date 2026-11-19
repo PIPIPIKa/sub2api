@@ -1182,14 +1182,25 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 			if len(source) == 0 {
 				source = defaultModelIDsForPlatform(service.PlatformComposite)
 			}
-			writeAllowlistedModelsList(c, service.PlatformComposite, apiKey.Group.ModelAllowlist.FilterForListing(source))
+			source = apiKey.Group.ModelAllowlist.FilterForListing(source)
+			if isCodexModelListingRequest(c) {
+				source = service.CollapseGeminiThinkingVariantsForListing(source)
+			}
+			writeAllowlistedModelsList(c, service.PlatformComposite, source)
 			return
 		}
 		if len(availableModels) > 0 {
+			if isCodexModelListingRequest(c) {
+				availableModels = service.CollapseGeminiThinkingVariantsForListing(availableModels)
+			}
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		fallbackModels := defaultModelIDsForPlatform(service.PlatformComposite)
+		if isCodexModelListingRequest(c) {
+			fallbackModels = service.CollapseGeminiThinkingVariantsForListing(fallbackModels)
+		}
+		writeModelsList(c, service.PlatformComposite, fallbackModels)
 		return
 	}
 
@@ -1197,11 +1208,18 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 		source := modelListingSource(platform, availableModels, defaultModelIDsForPlatform(platform))
-		writeAllowlistedModelsList(c, platform, apiKey.Group.ModelAllowlist.FilterForListing(source))
+		source = apiKey.Group.ModelAllowlist.FilterForListing(source)
+		if isCodexModelListingRequest(c) {
+			source = service.CollapseGeminiThinkingVariantsForListing(source)
+		}
+		writeAllowlistedModelsList(c, platform, source)
 		return
 	}
 
 	if len(availableModels) > 0 || (platform == service.PlatformOpenAI && availableModels != nil) {
+		if isCodexModelListingRequest(c) {
+			availableModels = service.CollapseGeminiThinkingVariantsForListing(availableModels)
+		}
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1226,6 +1244,11 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	writeModelsListResponse(c, claude.DefaultModels)
+}
+
+func isCodexModelListingRequest(c *gin.Context) bool {
+	ua := strings.ToLower(strings.TrimSpace(c.GetHeader("User-Agent")))
+	return strings.Contains(ua, "codex")
 }
 
 // CodexModels returns the effective group model list using the manifest shape

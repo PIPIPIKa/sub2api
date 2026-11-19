@@ -95,6 +95,24 @@ func TestApplyGeminiCompatThinkingConfig(t *testing.T) {
 	}
 }
 
+func TestApplyGeminiCompatThinkingConfig_Neon(t *testing.T) {
+	const baseReq = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":8192}}`
+	for _, tc := range []struct {
+		name, model, body, wantLevel string
+	}{
+		{"low", "gemini-4-neon", `{"output_config":{"effort":"low"}}`, "low"},
+		{"medium", "gemini-4-neon", `{"output_config":{"effort":"medium"}}`, "medium"},
+		{"high", "gemini-4-neon", `{"output_config":{"effort":"high"}}`, "high"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := applyGeminiCompatThinkingConfig([]byte(baseReq), []byte(tc.body), tc.model, false)
+			cfg := gjson.GetBytes(out, "generationConfig.thinkingConfig")
+			require.Equal(t, tc.wantLevel, cfg.Get("thinkingLevel").String())
+			require.False(t, cfg.Get("thinkingBudget").Exists())
+		})
+	}
+}
+
 func geminiCompatThinkingTestAccount() *Account {
 	return &Account{
 		ID:          611,

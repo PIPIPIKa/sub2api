@@ -815,6 +815,11 @@ var antigravityDefaultPassthroughModels = []string{
 	"gemini-3.8-flash-low",
 	"gemini-3.8-flash-medium",
 	"gemini-3.8-flash-tiered",
+	"gemini-4-neon",
+	"gemini-4-neon-low",
+	"gemini-4-neon-medium",
+	"gemini-4-neon-high",
+	"gemini-4-neon-xhigh",
 }
 
 // isAntigravityInjectedDefaultPassthrough 判断 GetModelMapping 中的 key→target 是否仅由

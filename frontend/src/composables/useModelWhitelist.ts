@@ -71,7 +71,8 @@ const geminiModels = [
   'gemini-3.7-flash',
   'gemini-3.8-flash',
   'gemini-4-argon',
-  'gemini-4-carbon'
+  'gemini-4-carbon',
+  'gemini-4-neon'
 ]
 
 // Antigravity 官方支持的模型（精确匹配）
@@ -129,6 +130,7 @@ const antigravityModels = [
   'gemini-3.8-flash-tiered',
   // Gemini 4 系列
   'gemini-4-carbon',
+  'gemini-4-neon',
   'gemini-4-argon-low',
   'gemini-4-argon-medium',
   'gemini-4-argon-high',
@@ -405,8 +407,9 @@ const grokPresetMappings = [
 
 // Antigravity 预设映射（支持通配符）
 const antigravityPresetMappings = [
-  // Claude 5.5 / Gemini 4 Argon / 3.8 Flash 推荐映射
+  // Claude 5.5 / Gemini 4 / 3.8 Flash 推荐映射
   { label: '4 Carbon', from: 'gemini-4-carbon', to: 'gemini-4-carbon', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: '4 Neon', from: 'gemini-4-neon', to: 'gemini-4-neon', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
   { label: '4 Argon→High', from: 'gemini-4-argon', to: 'gemini-4-argon-high', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: '4 Argon High', from: 'gemini-4-argon-high', to: 'gemini-4-argon-high', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
   { label: '4 Argon Medium', from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' },

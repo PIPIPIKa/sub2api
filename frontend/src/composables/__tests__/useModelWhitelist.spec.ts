@@ -223,6 +223,14 @@ describe('useModelWhitelist', () => {
     })
   })
 
+  it('Gemini 4 Neon exposes the base model and preset mapping', () => {
+    expect(getModelsByPlatform('gemini')).toContain('gemini-4-neon')
+    expect(getModelsByPlatform('antigravity')).toContain('gemini-4-neon')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-neon', to: 'gemini-4-neon' })
+    ]))
+  })
+
   it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {
     expect(getModelsByPlatform('gemini')).toContain('gemini-4-argon')
     const agModels = getModelsByPlatform('antigravity')

@@ -1437,6 +1437,13 @@ func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testin
 				want = want[:3]
 			}
 			for _, codex := range []bool{false, true} {
+				wantForListing := want
+				if codex {
+					wantForListing = []string{"gemini-3.8-flash", "gemini-pro-agent", "claude-opus-4-6-thinking"}
+					if platform == service.PlatformGemini {
+						wantForListing = wantForListing[:2]
+					}
+				}
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
 				c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
@@ -1459,7 +1466,7 @@ func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testin
 				}
 				require.Equal(t, http.StatusOK, rec.Code)
 				// 显式条目必须同时出现在两种目录；默认透传补齐的条目不锁定。
-				require.Subset(t, ids, want, "codex=%t", codex)
+				require.Subset(t, ids, wantForListing, "codex=%t", codex)
 				if platform == service.PlatformGemini {
 					require.NotContains(t, ids, "claude-opus-4-6-thinking", "codex=%t", codex)
 				}
@@ -1622,7 +1629,8 @@ func TestGatewayModels_CodexGeminiGroupListsAntigravityGeminiMappings(t *testing
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	slugs := codexModelSlugsForTest(got.Models)
-	require.Contains(t, slugs, "gemini-3.8-flash-high")
+	require.Contains(t, slugs, "gemini-3.8-flash")
+	require.NotContains(t, slugs, "gemini-3.8-flash-high")
 	require.Contains(t, slugs, "gemini-synced-custom")
 	require.NotContains(t, slugs, "claude-sonnet-4-6")
 	require.NotContains(t, slugs, "gemini-2.0-flash")

@@ -179,8 +179,14 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
 	"gemini-3.8-flash-tiered": "gemini-3.8-flash-tiered",
 	// Gemini 4 models
-	// Carbon uses the published model ID; do not infer Argon-style tier aliases.
+	// Carbon and Neon use the published model ID while their tier aliases select
+	// the reasoning depth upstream.
 	"gemini-4-carbon":       "gemini-4-carbon",
+	"gemini-4-neon":         "gemini-4-neon",
+	"gemini-4-neon-low":     "gemini-4-neon-low",
+	"gemini-4-neon-medium":  "gemini-4-neon-medium",
+	"gemini-4-neon-high":    "gemini-4-neon-high",
+	"gemini-4-neon-xhigh":   "gemini-4-neon-xhigh",
 	"gemini-4-argon":        "gemini-4-argon-high",
 	"gemini-4-argon-high":   "gemini-4-argon-high",
 	"gemini-4-argon-low":    "gemini-4-argon-low",

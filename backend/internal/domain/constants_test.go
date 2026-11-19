@@ -108,6 +108,11 @@ func TestDefaultAntigravityModelMapping_Gemini38FlashModels(t *testing.T) {
 func TestDefaultAntigravityModelMapping_Gemini4ArgonAndClaude55Models(t *testing.T) {
 	cases := map[string]string{
 		"gemini-4-carbon":          "gemini-4-carbon",
+		"gemini-4-neon":            "gemini-4-neon",
+		"gemini-4-neon-low":        "gemini-4-neon-low",
+		"gemini-4-neon-medium":     "gemini-4-neon-medium",
+		"gemini-4-neon-high":       "gemini-4-neon-high",
+		"gemini-4-neon-xhigh":      "gemini-4-neon-xhigh",
 		"gemini-4-argon":           "gemini-4-argon-high",
 		"gemini-4-argon-high":      "gemini-4-argon-high",
 		"gemini-4-argon-low":       "gemini-4-argon-low",

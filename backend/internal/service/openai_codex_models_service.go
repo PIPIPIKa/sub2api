@@ -114,6 +114,10 @@ func collapseGeminiThinkingVariants(modelIDs []string) []string {
 	return filtered
 }
 
+func CollapseGeminiThinkingVariantsForListing(modelIDs []string) []string {
+	return collapseGeminiThinkingVariants(modelIDs)
+}
+
 func geminiThinkingVariantBase(modelID string) string {
 	modelID = strings.ToLower(strings.TrimSpace(modelID))
 	for _, suffix := range geminiThinkingVariantSuffixes {
