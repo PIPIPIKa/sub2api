@@ -92,7 +92,36 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 	if group != nil && group.ModelAllowlistEnabled() {
 		filtered = group.ModelAllowlist.FilterForListing(filtered)
 	}
-	return omitDuplicateCodexBareAliases(filtered, explicitBareAliases)
+	return collapseGeminiThinkingVariants(omitDuplicateCodexBareAliases(filtered, explicitBareAliases))
+}
+
+func collapseGeminiThinkingVariants(modelIDs []string) []string {
+	present := make(map[string]struct{}, len(modelIDs))
+	for _, modelID := range modelIDs {
+		present[strings.ToLower(strings.TrimSpace(modelID))] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		base := geminiThinkingVariantBase(modelID)
+		if base != "" {
+			if _, exists := present[base]; exists {
+				continue
+			}
+		}
+		filtered = append(filtered, modelID)
+	}
+	return filtered
+}
+
+func geminiThinkingVariantBase(modelID string) string {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	for _, suffix := range geminiThinkingVariantSuffixes {
+		if strings.HasSuffix(modelID, suffix) {
+			return strings.TrimSuffix(modelID, suffix)
+		}
+	}
+	return ""
 }
 
 func isCodexDedicatedMediaModel(modelID string) bool {

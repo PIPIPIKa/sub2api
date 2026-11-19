@@ -35,6 +35,13 @@ func TestForkPatch_CodexDuplicateBareAliases(t *testing.T) {
 }
 
 func TestForkPatch_GeminiVariantsExposeCodexReasoningLevels(t *testing.T) {
+	require.Equal(t, []string{"gemini-4-carbon"}, FilterCodexModelIDsForGroup([]string{
+		"gemini-4-carbon", "gemini-4-carbon-low", "gemini-4-carbon-medium", "gemini-4-carbon-high",
+	}, nil))
+	require.Equal(t, []string{"gemini-4-carbon-high"}, FilterCodexModelIDsForGroup([]string{
+		"gemini-4-carbon-high",
+	}, nil))
+
 	account := Account{
 		ID:       39,
 		Platform: PlatformAntigravity,
