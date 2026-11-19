@@ -73,6 +73,12 @@ func TestForkPatch_GeminiVariantsExposeCodexReasoningLevels(t *testing.T) {
 		require.True(t, matched)
 		require.Equal(t, "gemini-4-carbon-"+level, mapped)
 	}
+
+	hydrogen := account
+	hydrogen.Credentials["model_mapping"].(map[string]any)["gemini-4-hydrogen-xhigh"] = "gemini-4-hydrogen-xhigh"
+	mapped, matched := resolveGeminiThinkingVariantForLevel(&hydrogen, "gemini-4-hydrogen", "xhigh")
+	require.True(t, matched)
+	require.Equal(t, "gemini-4-hydrogen-xhigh", mapped)
 }
 
 func TestForkPatch_ServiceTiersIntersectAndOfficialOAuthDefault(t *testing.T) {

@@ -98,8 +98,10 @@ func parseClaudeThinkingIntent(claudeBody []byte) claudeThinkingIntent {
 		intent.tier = "low"
 	case "medium":
 		intent.tier = "medium"
-	case "high", "xhigh", "max":
+	case "high":
 		intent.tier = "high"
+	case "xhigh", "max":
+		intent.tier = "xhigh"
 	}
 	if intent.thinkingType == "enabled" {
 		intent.budgetTokens = int(gjson.GetBytes(claudeBody, "thinking.budget_tokens").Int())

@@ -332,7 +332,7 @@ func geminiCodexReasoningLevels(account *Account, modelID string) []string {
 
 	mapping := account.GetModelMapping()
 	levels := make([]string, 0, 3)
-	for _, level := range []string{"low", "medium", "high"} {
+	for _, level := range []string{"low", "medium", "high", "xhigh"} {
 		if mapped, ok := resolveRequestedModelInMapping(mapping, modelID+"-"+level); ok && strings.TrimSpace(mapped) != "" {
 			levels = append(levels, level)
 		}
