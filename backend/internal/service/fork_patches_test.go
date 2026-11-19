@@ -34,6 +34,47 @@ func TestForkPatch_CodexDuplicateBareAliases(t *testing.T) {
 	require.Equal(t, []string{"gpt-6-astra", "gpt-5.6-sol"}, codexManifestModelSlugs(t, merged))
 }
 
+func TestForkPatch_GeminiVariantsExposeCodexReasoningLevels(t *testing.T) {
+	account := Account{
+		ID:       39,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-4-carbon-low":    "gemini-4-carbon-low",
+			"gemini-4-carbon-medium": "gemini-4-carbon-medium",
+			"gemini-4-carbon-high":   "gemini-4-carbon-high",
+		}},
+	}
+
+	body, err := buildCodexModelsManifestForAccounts(
+		PlatformAntigravity,
+		[]string{"gemini-4-carbon"},
+		[]Account{account},
+		nil,
+		nil,
+		true,
+	)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, "gemini-4-carbon", models[0]["slug"])
+	require.Equal(t, "high", models[0]["default_reasoning_level"])
+
+	levels, ok := models[0]["supported_reasoning_levels"].([]any)
+	require.True(t, ok)
+	require.Equal(t, []any{
+		map[string]any{"effort": "low", "description": "Fast responses with lighter reasoning"},
+		map[string]any{"effort": "medium", "description": "Balanced reasoning for most coding tasks"},
+		map[string]any{"effort": "high", "description": "Greater reasoning depth for coding and agent tasks"},
+	}, levels)
+
+	for _, level := range []string{"low", "medium", "high"} {
+		mapped, matched := resolveGeminiThinkingVariantForLevel(&account, "gemini-4-carbon", level)
+		require.True(t, matched)
+		require.Equal(t, "gemini-4-carbon-"+level, mapped)
+	}
+}
+
 func TestForkPatch_ServiceTiersIntersectAndOfficialOAuthDefault(t *testing.T) {
 	oauthUnsynced := Account{
 		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,

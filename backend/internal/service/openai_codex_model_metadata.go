@@ -254,7 +254,8 @@ func groupCodexModelMetadata(
 			}
 			lookupModel = account.GetMappedModel(modelID)
 		} else {
-			if !account.IsModelSupported(upstreamModel) {
+			if !account.IsModelSupported(upstreamModel) &&
+				!(platform == PlatformAntigravity && len(geminiCodexReasoningLevels(account, upstreamModel)) > 0) {
 				continue
 			}
 			lookupModel = account.GetMappedModel(upstreamModel)
@@ -263,6 +264,7 @@ func groupCodexModelMetadata(
 			publicAlias = true
 		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		applyGeminiCodexReasoningMetadata(&metadata, account, lookupModel)
 		if !ok {
 			if explicitTargetsConflict {
 				return codexModelMetadataOverride{
@@ -280,15 +282,62 @@ func groupCodexModelMetadata(
 	}
 	metadata := intersectUpstreamModelMetadata(modelID, candidates)
 	if missingMetadata {
+		reasoning := metadata.Reasoning
+		reasoningLevels := metadata.SupportedReasoningLevels
+		defaultReasoningLevel := metadata.DefaultReasoningLevel
 		metadata = codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{
 			CodexToolCapabilities: metadata.CodexToolCapabilities,
 		}}
+		metadata.Reasoning = reasoning
+		metadata.SupportedReasoningLevels = reasoningLevels
+		metadata.DefaultReasoningLevel = defaultReasoningLevel
 	}
 	if publicAlias {
 		metadata.DisplayName = modelID
 		metadata.Description = configuredCodexCustomDescription
 	}
 	return metadata, true
+}
+
+func applyGeminiCodexReasoningMetadata(metadata *UpstreamModelMetadata, account *Account, modelID string) {
+	if metadata == nil || account == nil || metadata.Reasoning != nil || len(metadata.SupportedReasoningLevels) > 0 {
+		return
+	}
+
+	modelID = strings.TrimPrefix(strings.TrimSpace(modelID), "models/")
+	if !strings.HasPrefix(modelID, "gemini-") || hasGeminiThinkingVariantSuffix(modelID) {
+		return
+	}
+
+	levels := geminiCodexReasoningLevels(account, modelID)
+	if len(levels) == 0 {
+		return
+	}
+
+	reasoning := true
+	metadata.Reasoning = &reasoning
+	metadata.SupportedReasoningLevels = levels
+	metadata.DefaultReasoningLevel = levels[len(levels)-1]
+}
+
+func geminiCodexReasoningLevels(account *Account, modelID string) []string {
+	if account == nil {
+		return nil
+	}
+
+	modelID = strings.TrimPrefix(strings.TrimSpace(modelID), "models/")
+	if !strings.HasPrefix(modelID, "gemini-") || hasGeminiThinkingVariantSuffix(modelID) {
+		return nil
+	}
+
+	mapping := account.GetModelMapping()
+	levels := make([]string, 0, 3)
+	for _, level := range []string{"low", "medium", "high"} {
+		if mapped, ok := resolveRequestedModelInMapping(mapping, modelID+"-"+level); ok && strings.TrimSpace(mapped) != "" {
+			levels = append(levels, level)
+		}
+	}
+	return levels
 }
 
 func codexExplicitModelTargetsConflict(accounts []Account, modelID string) bool {
