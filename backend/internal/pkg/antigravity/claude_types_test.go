@@ -103,6 +103,12 @@ func TestIsGeminiReasoningModel_IncludesProAgent(t *testing.T) {
 	if !IsGeminiReasoningModel("gemini-4-neon-xhigh") {
 		t.Fatal("expected gemini-4-neon-xhigh to be recognized as a Gemini reasoning model")
 	}
+	if !IsGeminiReasoningModel("gemini-4-hydrogen") || !IsGeminiReasoningModel("gemini-4-hydrogen-xhigh") {
+		t.Fatal("expected gemini-4-hydrogen variants to be recognized as Gemini reasoning models")
+	}
+	if IsGeminiReasoningModel("gemini-4-image") {
+		t.Fatal("did not expect gemini-4-image to be recognized as a Gemini reasoning model")
+	}
 	if IsGeminiReasoningModel("gemini-2.5-flash") {
 		t.Fatal("did not expect gemini-2.5-flash to be recognized as a Gemini reasoning model")
 	}

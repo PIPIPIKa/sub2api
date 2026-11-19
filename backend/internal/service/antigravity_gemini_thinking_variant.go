@@ -37,6 +37,15 @@ type geminiThinkingConfigProbe struct {
 	} `json:"generationConfig"`
 }
 
+func isSelfGeminiThinkingTierTarget(baseModel, target string) bool {
+	for _, suffix := range []string{"-low", "-medium", "-high", "-xhigh"} {
+		if target == baseModel+suffix {
+			return true
+		}
+	}
+	return false
+}
+
 // hasGeminiThinkingVariantSuffix 判断模型名是否已经带了思考深度后缀。
 func hasGeminiThinkingVariantSuffix(model string) bool {
 	for _, suffix := range geminiThinkingVariantSuffixes {
@@ -157,15 +166,21 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 	// 避免把上游不存在的裸名直接发出导致 404；而对已在映射表中的真实裸模型（如 gemini-2.5-flash），
 	// 仅查找精确变体键以避免被通配符误匹配。
 	mapped, modelMatched := resolveRequestedModelInMapping(mapping, model)
-	if modelMatched && strings.TrimSpace(mapped) != model {
-		return "", false
+	trimmedMapped := strings.TrimSpace(mapped)
+	if modelMatched && trimmedMapped != model {
+		// 默认映射中裸名可能指向自身的某个档位（如 gemini-4-argon -> gemini-4-argon-high）。
+		// 仅当目标就是自身的 -low/-medium/-high/-xhigh 档位且调用方显式指定了档位偏好时，
+		// 允许按请求的档位选择对应变体；指向 -tiered 或其他模型的显式别名始终保持原样。
+		if preferred == "" || !isSelfGeminiThinkingTierTarget(model, trimmedMapped) {
+			return "", false
+		}
 	}
 
 	if preferred == "" {
 		preferred = "high"
 	}
 	order := []string{preferred}
-	for _, level := range []string{"high", "medium", "low", "tiered"} {
+	for _, level := range []string{"high", "xhigh", "medium", "low", "tiered"} {
 		if level != preferred {
 			order = append(order, level)
 		}

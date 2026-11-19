@@ -97,19 +97,35 @@ func FilterCodexModelIDsForGroup(modelIDs []string, group *Group) []string {
 
 func collapseGeminiThinkingVariants(modelIDs []string) []string {
 	present := make(map[string]struct{}, len(modelIDs))
+	variantCounts := make(map[string]int)
 	for _, modelID := range modelIDs {
-		present[strings.ToLower(strings.TrimSpace(modelID))] = struct{}{}
+		normalized := strings.ToLower(strings.TrimSpace(modelID))
+		present[normalized] = struct{}{}
+		if base := geminiThinkingVariantBase(normalized); base != "" {
+			variantCounts[base]++
+		}
 	}
 
+	emitted := make(map[string]struct{}, len(modelIDs))
 	filtered := make([]string, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
-		base := geminiThinkingVariantBase(modelID)
-		if base != "" {
+		normalized := strings.ToLower(strings.TrimSpace(modelID))
+		if base := geminiThinkingVariantBase(normalized); base != "" {
 			if _, exists := present[base]; exists {
 				continue
 			}
+			if variantCounts[base] >= 2 {
+				if _, done := emitted[base]; !done {
+					emitted[base] = struct{}{}
+					filtered = append(filtered, base)
+				}
+				continue
+			}
 		}
-		filtered = append(filtered, modelID)
+		if _, done := emitted[normalized]; !done {
+			emitted[normalized] = struct{}{}
+			filtered = append(filtered, modelID)
+		}
 	}
 	return filtered
 }

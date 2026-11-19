@@ -696,6 +696,15 @@ func isAntigravityOpusHighTierModel(model string) bool {
 		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
+func gemini4HasThinkingTierSuffix(model string) bool {
+	for _, suffix := range []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max", "-tiered"} {
+		if strings.HasSuffix(model, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // gemini4ThinkingConfig preserves the upstream default when no effort is specified.
 // https://aistudio.google.com/docs/whats-new-gemini-4-carbon
 func gemini4ThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingConfig {
@@ -751,20 +760,12 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 		config.MaxOutputTokens = req.MaxTokens
 	}
 
-	// Gemini 4 Carbon and Neon accept thinking levels rather than token budgets.
-	// Tiered IDs, when supplied by the account catalog, already select the level upstream.
+	// Gemini 4 models accept thinking levels rather than token budgets.
+	// Tier-suffixed IDs (e.g. -low/-medium/-high/-xhigh/-tiered) already select the level upstream.
 	gemini4Model := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(req.Model)), "models/")
-	isGemini4Tiered := gemini4Model == "gemini-4-carbon" ||
-		gemini4Model == "gemini-4-carbon-low" ||
-		gemini4Model == "gemini-4-carbon-medium" ||
-		gemini4Model == "gemini-4-carbon-high" ||
-		gemini4Model == "gemini-4-neon" ||
-		gemini4Model == "gemini-4-neon-low" ||
-		gemini4Model == "gemini-4-neon-medium" ||
-		gemini4Model == "gemini-4-neon-high" ||
-		gemini4Model == "gemini-4-neon-xhigh"
+	isGemini4Tiered := strings.HasPrefix(gemini4Model, "gemini-4-") && !isGeminiMediaModel(gemini4Model)
 	if isGemini4Tiered {
-		config.ThinkingConfig = gemini4ThinkingConfig(req, gemini4Model == "gemini-4-carbon" || gemini4Model == "gemini-4-neon")
+		config.ThinkingConfig = gemini4ThinkingConfig(req, !gemini4HasThinkingTierSuffix(gemini4Model))
 	}
 
 	// Thinking 配置

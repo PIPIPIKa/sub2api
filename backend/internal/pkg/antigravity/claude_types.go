@@ -291,10 +291,19 @@ func FallbackGeminiModel(model string) GeminiModel {
 	return GeminiModel{Name: name, SupportedGenerationMethods: defaultGeminiMethods}
 }
 
+func isGeminiMediaModel(lowerID string) bool {
+	for _, kind := range []string{"image", "tts", "embedding", "live", "audio"} {
+		if strings.Contains(lowerID, kind) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsGeminiReasoningModel 判断是否为不支持参数和强制 ToolConfig 的 Gemini 推理模型
 func IsGeminiReasoningModel(modelID string) bool {
-	lowerID := strings.ToLower(modelID)
-	if strings.Contains(lowerID, "gemini-pro-agent") || strings.Contains(lowerID, "gemini-4-argon") || strings.Contains(lowerID, "gemini-4-neon") {
+	lowerID := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(modelID)), "models/")
+	if strings.Contains(lowerID, "gemini-pro-agent") || (strings.HasPrefix(lowerID, "gemini-4-") && !isGeminiMediaModel(lowerID)) {
 		return true
 	}
 	for _, m := range geminiModels {

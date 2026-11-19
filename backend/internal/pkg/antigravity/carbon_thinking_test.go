@@ -93,6 +93,30 @@ func TestNeonTierPreservesUpstreamSelection(t *testing.T) {
 	}
 }
 
+func TestGemini4GeneralizedThinkingLevelsAndTiers(t *testing.T) {
+	cfg := buildGenerationConfig(&ClaudeRequest{
+		Model:        "gemini-4-hydrogen",
+		MaxTokens:    1000,
+		OutputConfig: &ClaudeOutputConfig{Effort: "medium"},
+	})
+	require.NotNil(t, cfg.ThinkingConfig)
+	require.Equal(t, "medium", cfg.ThinkingConfig.ThinkingLevel)
+	require.Zero(t, cfg.ThinkingConfig.ThinkingBudget)
+	require.Empty(t, cfg.StopSequences)
+
+	for _, model := range []string{"gemini-4-hydrogen-xhigh", "gemini-4-carbon-xhigh", "gemini-4-argon-high"} {
+		tiered := buildGenerationConfig(&ClaudeRequest{
+			Model:        model,
+			Thinking:     &ThinkingConfig{Type: "enabled", BudgetTokens: 32768},
+			OutputConfig: &ClaudeOutputConfig{Effort: "low"},
+		})
+		require.NotNil(t, tiered.ThinkingConfig, model)
+		require.True(t, tiered.ThinkingConfig.IncludeThoughts, model)
+		require.Empty(t, tiered.ThinkingConfig.ThinkingLevel, model)
+		require.Zero(t, tiered.ThinkingConfig.ThinkingBudget, model)
+	}
+}
+
 func TestCarbonTransformUsesMappedModelForThinking(t *testing.T) {
 	req := &ClaudeRequest{Model: "client-alias", MaxTokens: 4096, Messages: []ClaudeMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}}, Thinking: &ThinkingConfig{Type: "enabled", BudgetTokens: 4096}}
 	data, err := TransformClaudeToGeminiWithOptions(req, "project", "gemini-4-carbon", TransformOptions{})

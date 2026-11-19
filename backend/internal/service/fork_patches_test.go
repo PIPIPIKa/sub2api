@@ -88,6 +88,87 @@ func TestForkPatch_GeminiVariantsExposeCodexReasoningLevels(t *testing.T) {
 	require.Equal(t, "gemini-4-hydrogen-xhigh", mapped)
 }
 
+func TestForkPatch_GeminiSystemicFixes(t *testing.T) {
+	// 1. Multi-variant-only lists collapse to bare base model; single variant stays as-is.
+	require.Equal(t, []string{"gemini-4-argon", "gemini-4-carbon-high"}, FilterCodexModelIDsForGroup([]string{
+		"gemini-4-argon-low", "gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-carbon-high",
+	}, nil))
+
+	// 2. Bare-only Gemini 4 account still exposes Codex reasoning levels.
+	bareAccount := Account{
+		ID:       41,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-4-carbon": "gemini-4-carbon",
+		}},
+	}
+	body, err := buildCodexModelsManifestForAccounts(PlatformAntigravity, []string{"gemini-4-carbon"}, []Account{bareAccount}, nil, nil, true)
+	require.NoError(t, err)
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 1)
+	require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, models[0]))
+	require.Equal(t, "high", models[0]["default_reasoning_level"])
+
+	// 3. Self-tier default mapping (gemini-4-argon -> gemini-4-argon-high) exposes slider AND respects explicit effort.
+	argonAccount := Account{
+		ID:       42,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{"mixed_scheduling": true},
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-4-argon":        "gemini-4-argon-high",
+			"gemini-4-argon-low":    "gemini-4-argon-low",
+			"gemini-4-argon-medium": "gemini-4-argon-medium",
+			"gemini-4-argon-high":   "gemini-4-argon-high",
+		}},
+	}
+	for _, platform := range []string{PlatformAntigravity, PlatformGemini} {
+		argonBody, err := buildCodexModelsManifestForAccounts(platform, []string{"gemini-4-argon"}, []Account{argonAccount}, nil, nil, true)
+		require.NoError(t, err)
+		argonModels := decodeCodexManifestModels(t, argonBody)
+		require.Len(t, argonModels, 1)
+		require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, argonModels[0]), platform)
+	}
+	mapped, matched := resolveGeminiThinkingVariantForLevel(&argonAccount, "gemini-4-argon", "low")
+	require.True(t, matched)
+	require.Equal(t, "gemini-4-argon-low", mapped)
+
+	// 4. Scheduling recognizes collapsed bare Gemini model even when only variants (incl. -xhigh) are mapped.
+	xhighOnly := &Account{
+		ID:       43,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"gemini-4-hydrogen-xhigh": "gemini-4-hydrogen-xhigh",
+		}},
+	}
+	gw := &GatewayService{}
+	require.True(t, gw.isModelSupportedByAccount(xhighOnly, "gemini-4-hydrogen"))
+	require.True(t, gw.isModelSupportedByAccountWithContext(context.Background(), xhighOnly, "gemini-4-hydrogen"))
+	require.Equal(t, "gemini-4-hydrogen-xhigh", mapAntigravityModel(xhighOnly, "gemini-4-hydrogen"))
+
+	// 5. Explicit account model_mapping does not leak runtime-injected default passthrough models in listings.
+	groupID := int64(88)
+	listSvc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{
+		byGroup: map[int64][]Account{groupID: {bareAccount}},
+	}}
+	require.Equal(t, []string{"gemini-4-carbon"}, listSvc.GetAvailableModels(context.Background(), &groupID, PlatformAntigravity))
+
+	// 6. Pricing tier normalization covers -xhigh and arbitrary gemini-4-* while preserving -cyber.
+	require.Equal(t, "gemini-4-neon", normalizeGeminiThinkingTierAlias("gemini-4-neon-xhigh"))
+	require.Equal(t, "gemini-4-hydrogen", normalizeGeminiThinkingTierAlias("gemini-4-hydrogen-xhigh"))
+	require.Equal(t, "gemini-4-hydrogen", normalizeGeminiThinkingTierAlias("gemini-4-hydrogen-low"))
+	require.Equal(t, "gemini-4-carbon-cyber", normalizeGeminiThinkingTierAlias("gemini-4-carbon-cyber"))
+
+	// 7. Compat thinking config normalizes xhigh -> high and allows medium for general gemini-4-* (excluding argon).
+	const baseReq = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":8192}}`
+	out := applyGeminiCompatThinkingConfig([]byte(baseReq), []byte(`{"output_config":{"effort":"medium"}}`), "gemini-4-hydrogen", false)
+	require.Equal(t, "medium", gjson.GetBytes(out, "generationConfig.thinkingConfig.thinkingLevel").String())
+	outXHigh := applyGeminiCompatThinkingConfig([]byte(baseReq), []byte(`{"output_config":{"effort":"xhigh"}}`), "gemini-4-neon", false)
+	require.Equal(t, "high", gjson.GetBytes(outXHigh, "generationConfig.thinkingConfig.thinkingLevel").String())
+}
+
 func TestForkPatch_ServiceTiersIntersectAndOfficialOAuthDefault(t *testing.T) {
 	oauthUnsynced := Account{
 		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,

@@ -287,6 +287,12 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 		return requestedModel
 	}
 
+	// 裸 Gemini 模型名若账号映射中存在思考变体（-low/-medium/-high/-xhigh/-tiered），
+	// 与转发阶段保持一致，允许调度和限流识别该模型。
+	if variant, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, ""); ok {
+		return variant
+	}
+
 	// 未在映射表中配置的模型，返回空字符串（不支持）
 	return ""
 }

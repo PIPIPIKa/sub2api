@@ -1629,8 +1629,9 @@ func TestGatewayModels_CodexGeminiGroupListsAntigravityGeminiMappings(t *testing
 	var got codexModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	slugs := codexModelSlugsForTest(got.Models)
-	require.Contains(t, slugs, "gemini-3.8-flash")
-	require.NotContains(t, slugs, "gemini-3.8-flash-high")
+	require.Contains(t, slugs, "gemini-3.8-flash-high")
+	require.NotContains(t, slugs, "gemini-3.6-flash")
+	require.NotContains(t, slugs, "gemini-4-neon")
 	require.Contains(t, slugs, "gemini-synced-custom")
 	require.NotContains(t, slugs, "claude-sonnet-4-6")
 	require.NotContains(t, slugs, "gemini-2.0-flash")

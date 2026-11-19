@@ -255,7 +255,7 @@ func groupCodexModelMetadata(
 			lookupModel = account.GetMappedModel(modelID)
 		} else {
 			if !account.IsModelSupported(upstreamModel) &&
-				!(platform == PlatformAntigravity && len(geminiCodexReasoningLevels(account, upstreamModel)) > 0) {
+				!(account.Platform == PlatformAntigravity && len(geminiCodexVariantReasoningLevels(account, upstreamModel)) > 0) {
 				continue
 			}
 			lookupModel = account.GetMappedModel(upstreamModel)
@@ -264,7 +264,11 @@ func groupCodexModelMetadata(
 			publicAlias = true
 		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
-		applyGeminiCodexReasoningMetadata(&metadata, account, lookupModel)
+		reasoningModel := lookupModel
+		if isSelfGeminiThinkingTierTarget(strings.TrimPrefix(strings.TrimSpace(upstreamModel), "models/"), strings.TrimPrefix(strings.TrimSpace(lookupModel), "models/")) {
+			reasoningModel = upstreamModel
+		}
+		applyGeminiCodexReasoningMetadata(&metadata, account, reasoningModel)
 		if !ok {
 			if explicitTargetsConflict {
 				return codexModelMetadataOverride{
@@ -309,7 +313,10 @@ func applyGeminiCodexReasoningMetadata(metadata *UpstreamModelMetadata, account 
 		return
 	}
 
-	levels := geminiCodexReasoningLevels(account, modelID)
+	levels := geminiCodexVariantReasoningLevels(account, modelID)
+	if len(levels) == 0 {
+		levels = geminiCodexDefaultReasoningLevels(modelID)
+	}
 	if len(levels) == 0 {
 		return
 	}
@@ -320,7 +327,7 @@ func applyGeminiCodexReasoningMetadata(metadata *UpstreamModelMetadata, account 
 	metadata.DefaultReasoningLevel = levels[len(levels)-1]
 }
 
-func geminiCodexReasoningLevels(account *Account, modelID string) []string {
+func geminiCodexVariantReasoningLevels(account *Account, modelID string) []string {
 	if account == nil {
 		return nil
 	}
@@ -331,13 +338,24 @@ func geminiCodexReasoningLevels(account *Account, modelID string) []string {
 	}
 
 	mapping := account.GetModelMapping()
-	levels := make([]string, 0, 3)
+	levels := make([]string, 0, 4)
 	for _, level := range []string{"low", "medium", "high", "xhigh"} {
 		if mapped, ok := resolveRequestedModelInMapping(mapping, modelID+"-"+level); ok && strings.TrimSpace(mapped) != "" {
 			levels = append(levels, level)
 		}
 	}
 	return levels
+}
+
+func geminiCodexDefaultReasoningLevels(modelID string) []string {
+	param := geminiThinkingParamForModel(modelID)
+	if param == geminiThinkingParamNone {
+		return nil
+	}
+	if param == geminiThinkingParamBudget || geminiModelSupportsMediumThinkingLevel(modelID) {
+		return []string{"low", "medium", "high"}
+	}
+	return []string{"low", "high"}
 }
 
 func codexExplicitModelTargetsConflict(accounts []Account, modelID string) bool {

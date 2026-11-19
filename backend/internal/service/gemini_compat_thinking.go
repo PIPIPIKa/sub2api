@@ -134,15 +134,28 @@ func geminiThinkingLevelFor(model string, intent claudeThinkingIntent) string {
 			tier = "high"
 		}
 	}
+	if tier == "xhigh" {
+		tier = "high"
+	}
 	name := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
 	isFlash := strings.Contains(name, "flash")
 	if tier == "minimal" && !isFlash {
 		tier = "low"
 	}
-	if tier == "medium" && !isFlash && !strings.HasPrefix(name, "gemini-3.1-pro") && name != "gemini-4-carbon" && name != "gemini-4-neon" {
+	if tier == "medium" && !geminiModelSupportsMediumThinkingLevel(name) {
 		tier = "high"
 	}
 	return tier
+}
+
+// geminiModelSupportsMediumThinkingLevel 判断裸 Gemini 思考模型是否支持 thinkingLevel="medium"。
+// Flash 系列、Gemini 3.1 Pro 以及除 Argon 外的 Gemini 4 模型均支持 medium。
+func geminiModelSupportsMediumThinkingLevel(model string) bool {
+	name := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	if strings.Contains(name, "flash") || strings.HasPrefix(name, "gemini-3.1-pro") {
+		return true
+	}
+	return strings.HasPrefix(name, "gemini-4-") && !strings.HasPrefix(name, "gemini-4-argon")
 }
 
 // geminiThinkingBudgetFor 把思考意图映射为 Gemini 2.5 的 thinkingBudget；ok=false 表示交给
@@ -168,7 +181,7 @@ func geminiThinkingBudgetFor(model string, intent claudeThinkingIntent) (budget 
 		budget = 1024
 	case "medium":
 		budget = 8192
-	case "high":
+	case "high", "xhigh":
 		budget = maxBudget
 	default:
 		if intent.budgetTokens <= 0 {
