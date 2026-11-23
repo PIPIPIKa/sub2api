@@ -57,13 +57,20 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
-	// 先通过 LoadCodeAssist 获取订阅等级（非关键路径，失败不影响后续配额获取）。
-	// 付费账号真实调用与真实额度窗口均位于 daily 端点，prod 端点会返回 100% 剩余且缺少新模型。
 	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
-	quotaURLs := resolveAntigravityQuotaURLs(account, tierRaw, tierNormalized)
+	// Older accounts may lack a stored plan. Use the live tier only for those accounts.
+	paid := accountHasAntigravityPaidTier(account)
+	if strings.TrimSpace(account.GetCredential("plan_type")) == "" {
+		paid = antigravity.IsPaidPlanType(tierRaw) || antigravity.IsPaidPlanType(tierNormalized)
+	}
+	baseURL := antigravityForwardBaseURLForTier(paid)
+	if baseURL == "" {
+		return nil, errors.New("no antigravity base url configured")
+	}
 
-	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModelsWithURLs(ctx, quotaURLs, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	// Query the same endpoint that receives forwarded requests for this account (daily for
+	// paid tiers, prod otherwise), because Google accounts quota separately per endpoint.
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -91,7 +98,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 
 	// The per-group 5-hour and weekly windows. Not on the critical path: without them the
 	// per-model figures above are shown as before.
-	if summary, err := client.RetrieveUserQuotaSummaryWithURLs(ctx, quotaURLs, accessToken, projectID); err != nil {
+	if summary, err := client.RetrieveUserQuotaSummaryFromURL(ctx, baseURL, accessToken, projectID); err != nil {
 		slog.Warn("failed to fetch antigravity quota summary", "account_id", account.ID, "error", err)
 	} else {
 		usageInfo.AntigravityQuotaGroups = buildAntigravityQuotaGroups(summary)
@@ -329,21 +336,4 @@ func extractValidationURL(body string) string {
 		return m
 	}
 	return ""
-}
-
-func resolveAntigravityQuotaURLs(account *Account, tierRaw, tierNormalized string) []string {
-	preferDaily := tierNormalized == "PRO" || tierNormalized == "ULTRA" || antigravity.IsPaidPlanType(tierRaw)
-	if !preferDaily {
-		if forwardURL := resolveAntigravityForwardBaseURL(account); forwardURL != "" && len(antigravity.BaseURLs) > 0 && forwardURL != antigravity.BaseURLs[0] {
-			preferDaily = true
-		}
-	}
-	if !preferDaily {
-		return antigravity.BaseURLs
-	}
-	urls := antigravity.ForwardBaseURLs()
-	if len(urls) > 1 && len(antigravity.BaseURLs) > 1 && urls[0] == antigravity.BaseURLs[0] {
-		return append([]string{antigravity.BaseURLs[1], antigravity.BaseURLs[0]}, antigravity.BaseURLs[2:]...)
-	}
-	return urls
 }

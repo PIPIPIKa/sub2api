@@ -56,6 +56,10 @@ type antigravityRetryLoopResult struct {
 // 上游拒绝 → 账号被 401「Invalid bearer token」/502 打入临时不可调度且无法恢复
 // （见 #3611 / #2962）。后台「测试连接」用的是生产端点，所以「测试成功但网关 401」。
 func resolveAntigravityForwardBaseURL(account *Account) string {
+	return antigravityForwardBaseURLForTier(accountHasAntigravityPaidTier(account))
+}
+
+func antigravityForwardBaseURLForTier(paid bool) string {
 	baseURLs := antigravity.BaseURLs
 	if len(baseURLs) == 0 {
 		return ""
@@ -64,7 +68,7 @@ func resolveAntigravityForwardBaseURL(account *Account) string {
 	if (mode == "daily" || mode == "sandbox") && len(baseURLs) > 1 {
 		return baseURLs[1]
 	}
-	if mode == "" && accountHasAntigravityPaidTier(account) && len(baseURLs) > 1 {
+	if mode == "" && paid && len(baseURLs) > 1 {
 		return baseURLs[1]
 	}
 	return baseURLs[0]
@@ -642,8 +646,12 @@ urlFallbackLoop:
 						continue
 					}
 
-					// 重试用尽，标记账户限流
-					p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					// 重试用尽，标记账户限流（无原因的 429 每个请求最多冷却一个账号）
+					if isBareAntigravity429(resp.StatusCode, respBody) && !claimBare429Cooldown(p.c, p.account.ID) {
+						logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d bare_429_cooldown_skipped account=%d (this request already cooled another account; the request is the likely cause)", p.prefix, resp.StatusCode, p.account.ID)
+					} else {
+						p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					}
 					logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
 					resp = &http.Response{
 						StatusCode: resp.StatusCode,
