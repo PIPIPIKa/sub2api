@@ -1,5 +1,9 @@
 # 执行记录
 
+## 2026-11-28 同步官方 v0.2.25
+
+- 已从官方稳定标签发布 [v0.2.25-p1](https://github.com/PIPIPIKa/sub2api/releases/tag/v0.2.25-p1)。五份安装包均已下载并验证 SHA-256，GHCR 的版本标签及 latest 指向同一双架构镜像。[同步与验证记录](03-execution/20261128-upstream-v0.2.25.md)
+
 ## 2026-11-23 同步官方 v0.2.24
 
 - 从 fork `v0.2.22-p7` 合入官方 `328db26f4`，包含 `v0.2.24` 和随后的 VERSION 回写。fork 发布版本为 `v0.2.24-p1`。
